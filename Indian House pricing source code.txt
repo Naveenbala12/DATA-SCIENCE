@@ -1,0 +1,96 @@
+# 1. Import libraries
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LinearRegression, Ridge, Lasso
+from sklearn.ensemble import RandomForestRegressor
+from xgboost import XGBRegressor
+from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
+import joblib
+
+# 2. Load data
+data = pd.read_csv('india_housing_prices_100.csv')  # replace with your dataset path
+print(data.head())
+
+# --- Immediately make sure 'SalePrice' is numeric ---
+if 'SalePrice' not in data.columns:
+    raise KeyError("'SalePrice' column is missing from the dataset.")
+
+data['SalePrice'] = pd.to_numeric(data['SalePrice'], errors='coerce')
+
+# 3. Preprocessing
+# Handle missing values
+numeric_data = data.select_dtypes(include=np.number)
+data[numeric_data.columns] = data[numeric_data.columns].fillna(numeric_data.mean())
+
+# Encoding categorical variables
+categorical_cols = data.select_dtypes(include=['object']).columns.tolist()
+data = pd.get_dummies(data, columns=categorical_cols) 
+
+
+# --- The fix is below ---
+# Ensure 'SalePrice' is in the DataFrame and is numeric
+if 'SalePrice' not in data.columns:
+    raise KeyError("The 'SalePrice' column is missing from the DataFrame. "
+                   "Check if it was present in the original data and "
+                   "not removed unintentionally during preprocessing.")
+# Convert 'SalePrice' to numeric if it's not already
+# Use errors='coerce' to convert non-numeric values to NaN
+data['SalePrice'] = pd.to_numeric(data['SalePrice'], errors='coerce')  
+# If there are any non-numeric values, they will be converted to NaN,
+# and you can decide how to handle them (e.g., imputation or removal).
+# For example, to remove rows with NaN 'SalePrice':
+# data.dropna(subset=['SalePrice'], inplace=True)
+# --- End of fix ---
+
+# Feature-Target split
+# Now 'SalePrice' should be present and can be dropped from X
+X = data.drop('SalePrice', axis=1)  
+y = data['SalePrice']
+
+# Train-Test split
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Feature Scaling
+scaler = StandardScaler()
+X_train = scaler.fit_transform(X_train)
+X_test = scaler.transform(X_test)
+
+# 4. Models to try
+models = {
+    'Linear Regression': LinearRegression(),
+    'Ridge Regression': Ridge(),
+    'Lasso Regression': Lasso(),
+    'Random Forest': RandomForestRegressor(),
+    'XGBoost': XGBRegressor(objective='reg:squarederror')
+}
+
+# 5. Training and Evaluation
+results = {}
+
+for name, model in models.items():
+    model.fit(X_train, y_train)
+    preds = model.predict(X_test)
+    r2 = r2_score(y_test, preds)
+    rmse = np.sqrt(mean_squared_error(y_test, preds))
+    mae = mean_absolute_error(y_test, preds)
+    results[name] = {'R2': r2, 'RMSE': rmse, 'MAE': mae}
+    print(f"{name} - R2: {r2:.4f}, RMSE: {rmse:.2f}, MAE: {mae:.2f}")
+
+# 6. Choose the best model
+best_model_name = max(results, key=lambda x: results[x]['R2'])
+print(f"\nBest Model: {best_model_name}")
+
+# 7. Save the model
+best_model = models[best_model_name]
+joblib.dump(best_model, 'best_house_price_model.pkl')
+print("\nModel saved successfully as 'best_house_price_model.pkl'!")
+
+# 8. Plotting performance
+result_df = pd.DataFrame(results).T
+result_df[['R2']].plot(kind='bar', title='Model Comparison (R2 Score)', legend=False)
+plt.show()
